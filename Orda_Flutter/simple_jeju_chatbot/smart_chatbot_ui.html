@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 Smart Jeju Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chat-container {
+            width: 90%;
+            max-width: 1200px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            overflow: hidden;
+        }
+
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .chat-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e1e5e9;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e1e5e9;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #4CAF50;
+        }
+
+        .send-button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .profile-sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-left: 1px solid #e1e5e9;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .profile-section {
+            margin-bottom: 25px;
+        }
+
+        .profile-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .profile-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 4px solid #4CAF50;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .profile-item strong {
+            color: #333;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .profile-item span {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 18px;
+            border-bottom-left-radius: 5px;
+            border: 1px solid #e1e5e9;
+            margin-bottom: 15px;
+            max-width: 70%;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots div {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dots div:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots div:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .decision-info {
+            background: #e3f2fd;
+            border: 1px solid #2196F3;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #1976D2;
+        }
+
+        .decision-info strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .chat-container {
+                width: 100%;
+                height: 100vh;
+                border-radius: 0;
+            }
+            
+            .profile-sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-main">
+            <div class="chat-header">
+                <h1>🧠 Smart Jeju Chatbot</h1>
+                <p>LLM이 지능적으로 관리하는 제주도 여행 상담 챗봇</p>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    <div class="message-content">
+                        안녕하세요! 🌴 저는 제주도 여행 전문 상담 챗봇입니다!<br><br>
+                        <strong>🧠 특별한 점:</strong><br>
+                        • LLM이 모든 대화를 지능적으로 관리<br>
+                        • 자연스러운 정보 수집 (강제 질문 없음)<br>
+                        • 적절한 타이밍에 RAG 검색<br>
+                        • 사용자 의도 우선의 유연한 대화<br><br>
+                        제주도 여행에 대해 무엇이든 편하게 말씀해주세요! 😊
+                    </div>
+                </div>
+            </div>
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                </div>
+                <span>챗봇이 생각 중...</span>
+            </div>
+            
+            <div class="chat-input-container">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="제주도 여행에 대해 무엇이든 물어보세요..."
+                    onkeypress="handleKeyPress(event)"
+                >
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    전송
+                </button>
+            </div>
+        </div>
+        
+        <div class="profile-sidebar">
+            <div class="profile-section">
+                <h3>👤 사용자 프로필</h3>
+                <div id="userProfile">
+                    <div class="profile-item">
+                        <strong>상태</strong>
+                        <span>정보 수집 중...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="profile-section">
+                <h3>🤖 LLM 결정 과정</h3>
+                <div id="llmDecisions">
+                    <div class="profile-item">
+                        <strong>대기 중</strong>
+                        <span>첫 메시지를 기다리고 있습니다</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const userProfile = document.getElementById('userProfile');
+        const llmDecisions = document.getElementById('llmDecisions');
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // 사용자 메시지 표시
+            addMessage(message, 'user');
+            chatInput.value = '';
+            
+            // 전송 버튼 비활성화 및 타이핑 표시
+            sendButton.disabled = true;
+            showTypingIndicator();
+
+            try {
+                const response = await fetch('http://localhost:8003/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: 'web-session'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // 챗봇 응답 표시
+                addMessage(data.response, 'bot');
+                
+                // 사용자 프로필 업데이트
+                updateUserProfile(data.user_profile);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('죄송합니다. 연결에 문제가 있습니다. 서버가 실행 중인지 확인해주세요. 🔧', 'bot');
+            } finally {
+                // 타이핑 표시 숨기기 및 버튼 활성화
+                hideTypingIndicator();
+                sendButton.disabled = false;
+                chatInput.focus();
+            }
+        }
+
+        function addMessage(content, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.innerHTML = content.replace(/\n/g, '<br>');
+            
+            messageDiv.appendChild(messageContent);
+            chatMessages.appendChild(messageDiv);
+            
+            // 스크롤을 맨 아래로
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            typingIndicator.style.display = 'flex';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            typingIndicator.style.display = 'none';
+        }
+
+        function updateUserProfile(profile) {
+            let profileHTML = '';
+            
+            if (profile.travel_dates) {
+                profileHTML += `
+                    <div class="profile-item">
+                        <strong>여행 날짜</strong>
+                        <span>${profile.travel_dates}</span>
+                    </div>
+                `;
+            }
+            
+            if (profile.duration) {
+                profileHTML += `
+                    <div class="profile-item">
+                        <strong>여행 기간</strong>
+                        <span>${profile.duration}</span>
+                    </div>
+                `;
+            }
+            
+            if (profile.group_type) {
+                profileHTML += `
+                    <div class="profile-item">
+                        <strong>여행 유형</strong>
+                        <span>${profile.group_type}</span>
+                    </div>
+                `;
+            }
+            
+            if (profile.interests && profile.interests.length > 0) {
+                profileHTML += `
+                    <div class="profile-item">
+                        <strong>관심사</strong>
+                        <span>${profile.interests.join(', ')}</span>
+                    </div>
+                `;
+            }
+            
+            if (profile.budget) {
+                profileHTML += `
+                    <div class="profile-item">
+                        <strong>예산</strong>
+                        <span>${profile.budget}</span>
+                    </div>
+                `;
+            }
+            
+            if (!profileHTML) {
+                profileHTML = `
+                    <div class="profile-item">
+                        <strong>상태</strong>
+                        <span>정보 수집 중...</span>
+                    </div>
+                `;
+            }
+            
+            userProfile.innerHTML = profileHTML;
+        }
+
+        // 페이지 로드 시 입력창에 포커스
+        window.onload = function() {
+            chatInput.focus();
+        };
+    </script>
+</body>
+</html> 

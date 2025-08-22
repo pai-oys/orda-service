@@ -1,0 +1,154 @@
+{
+  "users": [
+    {
+      "name": "홍지연",
+      "personality": "에겐녀",
+      "travel_style": "활동적이고 움직이는 것을 좋아하는 여행"
+    },
+    {
+      "name": "이다솔",
+      "personality": "테토남",
+      "travel_style": "맛있는 음식과 좋은 숙박시설 중심의 여행"
+    },
+    {
+      "name": "강민수",
+      "personality": "에겐남",
+      "travel_style": "자연과 관광을 중심으로 한 활동적인 여행"
+    },
+    {
+      "name": "조환희",
+      "personality": "테토녀",
+      "travel_style": "액티비티와 체험 활동 중심의 여행"
+    },
+    {
+      "name": "강민진",
+      "personality": "테토녀",
+      "travel_style": "액티비티와 자연풍경, 맛집을 즐기는 여행"
+    },
+    {
+      "name": "최윤정",
+      "personality": "테토녀",
+      "travel_style": "힐링과 휴식을 중시하는 여행"
+    },
+    {
+      "name": "이연우",
+      "personality": "에겐녀",
+      "travel_style": "아름다운 풍경과 감성적인 장소 중심의 여행"
+    },
+    {
+      "name": "이채원",
+      "personality": "테토녀",
+      "travel_style": "재미있는 활동과 액티비티 중심의 여행"
+    },
+    {
+      "name": "김태윤",
+      "personality": "에겐녀",
+      "travel_style": "맛집 투어와 음식을 중심으로 한 여행"
+    },
+    {
+      "name": "박찬영",
+      "personality": "에겐남",
+      "travel_style": "자연풍경과 관광을 즐기는 여행"
+    },
+    {
+      "name": "호수빈",
+      "personality": "테토녀",
+      "travel_style": "좋은 숙박시설과 맛있는 음식, 예쁜 풍경이 있는 여행"
+    },
+    {
+      "name": "노은서",
+      "personality": "에겐녀",
+      "travel_style": "액티비티와 활동적인 체험 중심의 여행"
+    },
+    {
+      "name": "김해나",
+      "personality": "테토녀",
+      "travel_style": "좋은 날씨와 맛있는 음식, 예쁜 관광지가 있는 여행"
+    },
+    {
+      "name": "김채린",
+      "personality": "테토녀",
+      "travel_style": "맛있는 음식과 기억에 남는 맛집 중심의 여행"
+    },
+    {
+      "name": "조현우",
+      "personality": "테토남",
+      "travel_style": "맛있는 음식을 중심으로 한 여행"
+    },
+    {
+      "name": "윤상민",
+      "personality": "에겐남",
+      "travel_style": "좋은 숙박시설과 맛있는 음식, 바다 전망이 있는 여행"
+    },
+    {
+      "name": "강지영",
+      "personality": "에겐녀",
+      "travel_style": "친구들과 함께하는 추억 중심의 시골 여행"
+    },
+    {
+      "name": "김예지",
+      "personality": "테토녀",
+      "travel_style": "스노클링 등 활동적이고 다양한 체험 중심의 여행"
+    },
+    {
+      "name": "전지윤",
+      "personality": "에겐녀",
+      "travel_style": "음식과 관광, 사진과 지역 특색 체험 중심의 여행"
+    },
+    {
+      "name": "김아연",
+      "personality": "테토녀",
+      "travel_style": "평소와 다른 추억을 만들 수 있는 활동 중심의 여행"
+    },
+    {
+      "name": "최서연",
+      "personality": "에겐녀",
+      "travel_style": "깔끔하고 아기자기한 동네 카페와 소품샵 탐방 여행"
+    },
+    {
+      "name": "조동현",
+      "personality": "에겐남",
+      "travel_style": "평소에 먹기 힘든 특별한 음식 중심의 여행"
+    },
+    {
+      "name": "이원준",
+      "personality": "에겐남",
+      "travel_style": "아름다운 자연 속에서 맛있는 음식을 즐기는 여행"
+    },
+    {
+      "name": "김천지",
+      "personality": "에겐남",
+      "travel_style": "캠핑과 직접 체험하는 활동 중심의 여행"
+    },
+    {
+      "name": "김지원",
+      "personality": "에겐녀",
+      "travel_style": "깔끔하고 쾌적한 숙박시설에서 에너지를 회복하는 여행"
+    },
+    {
+      "name": "박다영",
+      "personality": "에겐녀",
+      "travel_style": "우정여행과 촌캉스 스타일의 재미있는 여행"
+    },
+    {
+      "name": "조현진",
+      "personality": "테토남",
+      "travel_style": "음악과 함께하는 드라이빙 여행"
+    },
+    {
+      "name": "이소윤",
+      "personality": "테토녀",
+      "travel_style": "기억에 남는 특별한 음식 중심의 여행"
+    },
+    {
+      "name": "모진호",
+      "personality": "에겐남",
+      "travel_style": "새로운 환경과 자연, 인문환경의 변화를 느끼는 관광 중심 여행"
+    },
+    {
+      "name": "김성재",
+      "personality": "에겐남",
+      "travel_style": "기억에 오래 남는 액티비티한 활동 중심의 여행"
+    }
+  ]
+}

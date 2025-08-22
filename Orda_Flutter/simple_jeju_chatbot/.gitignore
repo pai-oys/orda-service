@@ -1,0 +1,19 @@
+# Vector store database files
+vector_store/
+*.sqlite3
+*.bin
+
+# Environment files
+.env
+
+# Large files
+*.zip
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# System files
+.DS_Store

@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌴 LangGraph 제주도 멀티 에이전트 챗봇</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 1200px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #FF6B6B, #4ECDC4);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .chat-area {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar {
+            flex: 1;
+            background: #f8f9fa;
+            border-left: 1px solid #e9ecef;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user-message {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .user-message .bubble {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 20px 20px 5px 20px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .bot-message {
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        .bot-message .bubble {
+            background: white;
+            color: #333;
+            padding: 15px 20px;
+            border-radius: 20px 20px 20px 5px;
+            max-width: 80%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #4ECDC4;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-area input:focus {
+            border-color: #4ECDC4;
+        }
+
+        .input-area button {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #4ECDC4, #44A08D);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .input-area button:hover {
+            transform: translateY(-2px);
+        }
+
+        .input-area button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .profile-section {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .profile-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .profile-item {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 15px;
+            margin: 5px 0;
+            font-size: 14px;
+            border-left: 3px solid #4ECDC4;
+        }
+
+        .agent-status {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .agent-status h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .agent-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .agent-card {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .agent-card.active {
+            border-color: #4ECDC4;
+            background: #e8f8f7;
+        }
+
+        .agent-card.searching {
+            border-color: #FF6B6B;
+            background: #ffe8e8;
+            animation: pulse 1.5s infinite;
+        }
+
+        .agent-card.completed {
+            border-color: #4CAF50;
+            background: #e8f5e8;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4ECDC4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .example-queries {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .example-queries h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .example-query {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 15px;
+            margin: 5px 0;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+            border-left: 3px solid #FF6B6B;
+        }
+
+        .example-query:hover {
+            background: #e9ecef;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .status-ready { background: #4CAF50; }
+        .status-searching { background: #FF6B6B; }
+        .status-idle { background: #9E9E9E; }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                order: -1;
+                flex: none;
+                height: 200px;
+                border-left: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+
+            .agent-grid {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <h1>🌴 LangGraph 제주도 멀티 에이전트 챗봇</h1>
+            <p>4개의 전문 에이전트가 협력하여 완벽한 제주도 여행 계획을 만들어드립니다</p>
+        </div>
+
+        <div class="main-content">
+            <div class="chat-area">
+                <div class="messages" id="messages">
+                    <div class="message bot-message">
+                        <div class="bubble">
+                            <strong>🌟 안녕하세요!</strong><br><br>
+                            저는 LangGraph 기반의 지능형 제주도 여행 챗봇입니다! 4개의 전문 에이전트가 협력합니다:<br><br>
+                            🏨 <strong>숙박 에이전트</strong> - 호텔, 펜션, 리조트 추천<br>
+                            🎯 <strong>관광 에이전트</strong> - 관광지, 액티비티, 포토스팟<br>
+                            🍽️ <strong>음식 에이전트</strong> - 맛집, 카페, 특산물<br>
+                            🎉 <strong>행사 에이전트</strong> - 축제, 이벤트, 체험프로그램<br><br>
+                            제주도 여행에 대해 자유롭게 말씀해주세요! 😊
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" id="messageInput" placeholder="제주도 여행에 대해 무엇이든 말씀해주세요... (예: 여자친구랑 2박3일로 제주도 여행가려고해)" onkeypress="handleKeyPress(event)">
+                    <button onclick="sendMessage()" id="sendButton">전송</button>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="profile-section">
+                    <h3>👤 사용자 프로필</h3>
+                    <div id="userProfile">
+                        <div class="profile-item">정보 없음</div>
+                    </div>
+                </div>
+
+                <div class="agent-status">
+                    <h4>🤖 에이전트 상태</h4>
+                    <div class="agent-grid">
+                        <div class="agent-card" id="agent-hotel">
+                            <div class="status-indicator status-idle"></div>
+                            🏨 숙박
+                        </div>
+                        <div class="agent-card" id="agent-travel">
+                            <div class="status-indicator status-idle"></div>
+                            🎯 관광
+                        </div>
+                        <div class="agent-card" id="agent-food">
+                            <div class="status-indicator status-idle"></div>
+                            🍽️ 음식
+                        </div>
+                        <div class="agent-card" id="agent-event">
+                            <div class="status-indicator status-idle"></div>
+                            🎉 행사
+                        </div>
+                    </div>
+                </div>
+
+                <div class="example-queries">
+                    <h4>💡 예시 질문</h4>
+                    <div class="example-query" onclick="setMessage('여자친구랑 2박3일로 제주도 여행가려고해')">여자친구랑 2박3일로 제주도 여행가려고해</div>
+                    <div class="example-query" onclick="setMessage('가족 4명이서 3박4일 제주도 여행 계획 짜줘')">가족 4명이서 3박4일 제주도 여행 계획 짜줘</div>
+                    <div class="example-query" onclick="setMessage('친구들이랑 액티비티 위주로 제주도 여행하고 싶어')">친구들이랑 액티비티 위주로 제주도 여행하고 싶어</div>
+                    <div class="example-query" onclick="setMessage('혼자 힐링 여행으로 제주도 가려고 하는데 추천해줘')">혼자 힐링 여행으로 제주도 가려고 하는데 추천해줘</div>
+                </div>
+
+                <div class="example-queries" style="margin-top: 15px;">
+                    <h4>🔄 세션 관리</h4>
+                    <div class="example-query" onclick="resetSession()" style="border-left-color: #FF6B6B; background: #fff5f5;">🗑️ 새로운 대화 시작</div>
+                    <div class="example-query" onclick="showSessionInfo()" style="border-left-color: #4ECDC4; background: #f0fffe;">ℹ️ 현재 세션 정보</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8003/chat';
+        let isLoading = false;
+        
+        // 고유한 세션 ID 생성 (브라우저별로 고유)
+        let sessionId = localStorage.getItem('chatbot_session_id');
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('chatbot_session_id', sessionId);
+        }
+        console.log('🆔 세션 ID:', sessionId);
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !isLoading) {
+                sendMessage();
+            }
+        }
+
+        function setMessage(message) {
+            document.getElementById('messageInput').value = message;
+        }
+
+        function resetSession() {
+            if (confirm('새로운 대화를 시작하시겠습니까? 현재 대화 기록과 프로필이 초기화됩니다.')) {
+                // 새로운 세션 ID 생성
+                sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('chatbot_session_id', sessionId);
+                
+                // UI 초기화
+                document.getElementById('messages').innerHTML = `
+                    <div class="message bot-message">
+                        <div class="bubble">
+                            <strong>🔄 새로운 대화가 시작되었습니다!</strong><br><br>
+                            4개의 전문 에이전트가 협력합니다:<br><br>
+                            🏨 <strong>숙박 에이전트</strong> - 호텔, 펜션, 리조트 추천<br>
+                            🎯 <strong>관광 에이전트</strong> - 관광지, 액티비티, 포토스팟<br>
+                            🍽️ <strong>음식 에이전트</strong> - 맛집, 카페, 특산물<br>
+                            🎉 <strong>행사 에이전트</strong> - 축제, 이벤트, 체험프로그램<br><br>
+                            제주도 여행에 대해 자유롭게 말씀해주세요! 😊
+                        </div>
+                    </div>
+                `;
+                
+                // 프로필 초기화
+                updateUserProfile(null);
+                
+                // 에이전트 상태 초기화
+                setAgentStatus('idle');
+                
+                console.log('🔄 새로운 세션 시작:', sessionId);
+                
+                addMessage('✨ 새로운 대화가 시작되었습니다! 이전 대화 기록은 모두 초기화되었습니다.');
+            }
+        }
+
+        function showSessionInfo() {
+            const info = `
+                🆔 세션 ID: ${sessionId}
+                📅 시작 시간: ${new Date(parseInt(sessionId.split('_')[1])).toLocaleString()}
+                💾 브라우저 저장소: ${localStorage.getItem('chatbot_session_id') ? '✅' : '❌'}
+            `;
+            
+            addMessage(`<strong>📋 현재 세션 정보</strong><br><br>${info.replace(/\n/g, '<br>')}`);
+        }
+
+        function updateUserProfile(profile) {
+            const profileDiv = document.getElementById('userProfile');
+            if (!profile || Object.keys(profile).filter(key => profile[key]).length === 0) {
+                profileDiv.innerHTML = '<div class="profile-item">정보 없음</div>';
+                return;
+            }
+
+            // 한 줄 요약 형식으로 표시
+            let profileParts = [];
+            if (profile.travel_dates) profileParts.push(`날짜: ${profile.travel_dates}`);
+            if (profile.duration) profileParts.push(`기간: ${profile.duration}`);
+            if (profile.group_type) profileParts.push(`여행 유형: ${profile.group_type}`);
+            if (profile.interests && profile.interests.length > 0) profileParts.push(`관심사: ${profile.interests.join(', ')}`);
+            if (profile.budget) profileParts.push(`예산: ${profile.budget}`);
+            if (profile.travel_region) profileParts.push(`여행지역: ${profile.travel_region}`);
+
+            if (profileParts.length > 0) {
+                const summaryText = profileParts.join(' | ');
+                profileDiv.innerHTML = `<div class="profile-item" style="background: linear-gradient(135deg, #e3f2fd, #f3e5f5); font-weight: 500; border-left: 4px solid #4ECDC4;">📋 ${summaryText}</div>`;
+            } else {
+                profileDiv.innerHTML = '<div class="profile-item">정보 없음</div>';
+            }
+        }
+
+        function setAgentStatus(status) {
+            const agents = ['hotel', 'travel', 'food', 'event'];
+            
+            agents.forEach(agent => {
+                const card = document.getElementById(`agent-${agent}`);
+                const indicator = card.querySelector('.status-indicator');
+                
+                card.className = 'agent-card';
+                indicator.className = 'status-indicator status-idle';
+                
+                if (status === 'searching') {
+                    card.classList.add('searching');
+                    indicator.className = 'status-indicator status-searching';
+                } else if (status === 'completed') {
+                    card.classList.add('completed');
+                    indicator.className = 'status-indicator status-ready';
+                }
+            });
+        }
+
+        function addMessage(content, isUser = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            
+            if (isUser) {
+                bubble.textContent = content;
+            } else {
+                // 봇 메시지는 HTML을 허용 (마크다운 스타일링용)
+                bubble.innerHTML = content.replace(/\n/g, '<br>');
+            }
+            
+            messageDiv.appendChild(bubble);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addLoadingMessage() {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot-message';
+            messageDiv.id = 'loading-message';
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.innerHTML = `
+                <div class="loading-indicator">
+                    <div class="spinner"></div>
+                    🤖 4개 에이전트가 협력하여 정보를 검색 중입니다...<br>
+                    <small>(약 30-40초 소요됩니다)</small>
+                </div>
+            `;
+            
+            messageDiv.appendChild(bubble);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function removeLoadingMessage() {
+            const loadingMessage = document.getElementById('loading-message');
+            if (loadingMessage) {
+                loadingMessage.remove();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const message = input.value.trim();
+            
+            if (!message || isLoading) return;
+
+            // UI 업데이트
+            addMessage(message, true);
+            input.value = '';
+            isLoading = true;
+            sendButton.disabled = true;
+            sendButton.textContent = '처리 중...';
+            
+            // 에이전트 상태를 검색 중으로 설정
+            setAgentStatus('searching');
+            
+            // 로딩 메시지 추가
+            const loadingMessage = addLoadingMessage();
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: sessionId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // 로딩 메시지 제거
+                removeLoadingMessage();
+                
+                // 에이전트 상태를 완료로 설정
+                setAgentStatus('completed');
+                
+                // 응답 메시지 추가
+                addMessage(data.response);
+                
+                // 사용자 프로필 업데이트 (응답에 프로필 정보가 있다면)
+                if (data.user_profile) {
+                    updateUserProfile(data.user_profile);
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                removeLoadingMessage();
+                setAgentStatus('idle');
+                
+                addMessage(`❌ <strong>연결 오류가 발생했습니다.</strong><br><br>
+                    가능한 원인:<br>
+                    • 서버가 실행되지 않았습니다 (포트 8003)<br>
+                    • RAG 서버가 실행되지 않았습니다 (포트 8002)<br>
+                    • 네트워크 연결 문제<br><br>
+                    서버 상태를 확인해주세요. 🔧`);
+            } finally {
+                isLoading = false;
+                sendButton.disabled = false;
+                sendButton.textContent = '전송';
+            }
+        }
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🌴 LangGraph 제주도 멀티 에이전트 챗봇 UI 로드 완료');
+            console.log('API URL:', API_URL);
+        });
+    </script>
+</body>
+</html>

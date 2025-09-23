@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚔️ 멀티에이전트 vs 단일체인 성능 비교</title>
+    <style>
+        body {
+            font-family: 'Apple SD Gothic Neo', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .comparison-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .systems-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .system-card {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+        
+        .system-card.multi-agent {
+            border-color: #007AFF;
+            background: #f0f7ff;
+        }
+        
+        .system-card.single-chain {
+            border-color: #FF6B6B;
+            background: #fff0f0;
+        }
+        
+        .system-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .system-title.multi-agent {
+            color: #007AFF;
+        }
+        
+        .system-title.single-chain {
+            color: #FF6B6B;
+        }
+        
+        .system-description {
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: #666;
+        }
+        
+        .performance-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .metric {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #eee;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .metric-value.fast {
+            color: #28a745;
+        }
+        
+        .metric-value.slow {
+            color: #dc3545;
+        }
+        
+        .test-button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        
+        .test-button.multi-agent {
+            background: #007AFF;
+            color: white;
+        }
+        
+        .test-button.single-chain {
+            background: #FF6B6B;
+            color: white;
+        }
+        
+        .test-button:hover {
+            opacity: 0.8;
+        }
+        
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .test-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        
+        .results-section {
+            margin-top: 30px;
+        }
+        
+        .result-card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #f9f9f9;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .result-title {
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .result-time {
+            font-size: 16px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: white;
+        }
+        
+        .result-time.fast {
+            background: #28a745;
+        }
+        
+        .result-time.slow {
+            background: #dc3545;
+        }
+        
+        .result-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #eee;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .comparison-summary {
+            background: #e8f4f8;
+            border: 1px solid #b8daff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .winner {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            color: #007AFF;
+            margin-bottom: 15px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison-container">
+        <div class="header">
+            <h1>⚔️ 멀티에이전트 vs 단일체인 성능 비교</h1>
+            <p>같은 질문으로 두 시스템의 성능을 직접 비교해보세요!</p>
+        </div>
+        
+        <div class="systems-grid">
+            <!-- 멀티에이전트 시스템 -->
+            <div class="system-card multi-agent">
+                <div class="system-title multi-agent">🤖 멀티에이전트 시스템</div>
+                <div class="system-description">
+                    LangGraph 기반으로 각 도메인별 전문 에이전트가 병렬로 작업하여 빠른 응답을 제공합니다.
+                </div>
+                <div class="performance-metrics">
+                    <div class="metric">
+                        <div class="metric-label">예상 응답시간</div>
+                        <div class="metric-value fast" id="multiAgentTime">~7초</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">처리 방식</div>
+                        <div class="metric-value">병렬</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">LLM 인스턴스</div>
+                        <div class="metric-value">6개</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">스트리밍</div>
+                        <div class="metric-value fast">지원</div>
+                    </div>
+                </div>
+                <button class="test-button multi-agent" onclick="testMultiAgent()" id="multiAgentBtn">
+                    🚀 멀티에이전트 테스트
+                </button>
+            </div>
+            
+            <!-- 단일체인 시스템 -->
+            <div class="system-card single-chain">
+                <div class="system-title single-chain">🔗 단일체인 시스템</div>
+                <div class="system-description">
+                    전통적인 LangChain 구조로 하나의 LLM이 순차적으로 모든 작업을 처리합니다.
+                </div>
+                <div class="performance-metrics">
+                    <div class="metric">
+                        <div class="metric-label">예상 응답시간</div>
+                        <div class="metric-value slow" id="singleChainTime">~25초</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">처리 방식</div>
+                        <div class="metric-value">순차</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">LLM 인스턴스</div>
+                        <div class="metric-value">1개</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">스트리밍</div>
+                        <div class="metric-value slow">미지원</div>
+                    </div>
+                </div>
+                <button class="test-button single-chain" onclick="testSingleChain()" id="singleChainBtn">
+                    🐌 단일체인 테스트
+                </button>
+            </div>
+        </div>
+        
+        <div class="test-input-section">
+            <input 
+                type="text" 
+                id="testMessage" 
+                class="test-input" 
+                placeholder="테스트할 여행 질문을 입력하세요 (예: 가족 4명이 3박4일 제주도 여행을 계획 중입니다)"
+                value="가족 4명이 3박4일 제주도 여행을 계획 중입니다"
+            >
+            <div style="text-align: center;">
+                <button onclick="testBoth()" id="testBothBtn" style="background: #28a745; color: white; border: none; padding: 15px 30px; border-radius: 8px; font-size: 18px; cursor: pointer;">
+                    ⚡ 동시 비교 테스트
+                </button>
+            </div>
+        </div>
+        
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <!-- 결과가 여기에 표시됩니다 -->
+        </div>
+        
+        <div class="comparison-summary" id="comparisonSummary" style="display: none;">
+            <!-- 비교 요약이 여기에 표시됩니다 -->
+        </div>
+    </div>
+
+    <script>
+        let sessionId = 'comparison-test-' + Date.now();
+        let testResults = {};
+
+        async function testMultiAgent() {
+            const message = document.getElementById('testMessage').value.trim();
+            if (!message) {
+                alert('테스트 메시지를 입력해주세요.');
+                return;
+            }
+
+            const btn = document.getElementById('multiAgentBtn');
+            btn.disabled = true;
+            btn.textContent = '🤖 처리 중...';
+
+            try {
+                const startTime = Date.now();
+                
+                const response = await fetch('http://localhost:8001/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: message,
+                        session_id: sessionId + '_multi',
+                        conversation_history: [],
+                        user_profile: {},
+                        profile_completion: 0.0
+                    })
+                });
+
+                const data = await response.json();
+                const endTime = Date.now();
+                const processingTime = (endTime - startTime) / 1000;
+
+                testResults.multiAgent = {
+                    response: data.response,
+                    time: processingTime,
+                    timestamp: new Date().toLocaleTimeString()
+                };
+
+                document.getElementById('multiAgentTime').textContent = `${processingTime.toFixed(1)}초`;
+                displayResults();
+
+            } catch (error) {
+                console.error('멀티에이전트 테스트 오류:', error);
+                alert('멀티에이전트 테스트에 실패했습니다: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 멀티에이전트 테스트';
+            }
+        }
+
+        async function testSingleChain() {
+            const message = document.getElementById('testMessage').value.trim();
+            if (!message) {
+                alert('테스트 메시지를 입력해주세요.');
+                return;
+            }
+
+            const btn = document.getElementById('singleChainBtn');
+            btn.disabled = true;
+            btn.textContent = '🔗 처리 중...';
+
+            try {
+                const startTime = Date.now();
+                
+                const response = await fetch('http://localhost:8003/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: message,
+                        session_id: sessionId + '_single',
+                        conversation_history: [],
+                        user_profile: {},
+                        profile_completion: 0.0
+                    })
+                });
+
+                const data = await response.json();
+                const endTime = Date.now();
+                const processingTime = (endTime - startTime) / 1000;
+
+                testResults.singleChain = {
+                    response: data.response,
+                    time: processingTime,
+                    timestamp: new Date().toLocaleTimeString()
+                };
+
+                document.getElementById('singleChainTime').textContent = `${processingTime.toFixed(1)}초`;
+                displayResults();
+
+            } catch (error) {
+                console.error('단일체인 테스트 오류:', error);
+                alert('단일체인 테스트에 실패했습니다: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🐌 단일체인 테스트';
+            }
+        }
+
+        async function testBoth() {
+            const message = document.getElementById('testMessage').value.trim();
+            if (!message) {
+                alert('테스트 메시지를 입력해주세요.');
+                return;
+            }
+
+            const btn = document.getElementById('testBothBtn');
+            btn.disabled = true;
+            btn.textContent = '⚡ 동시 테스트 중...';
+
+            // 결과 섹션 표시 및 로딩 표시
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('resultsSection').innerHTML = `
+                <div class="loading">
+                    ⏳ 두 시스템을 동시에 테스트하고 있습니다...<br>
+                    멀티에이전트는 약 7초, 단일체인은 약 25-30초가 예상됩니다.
+                </div>
+            `;
+
+            try {
+                // 동시 실행
+                const [multiResult, singleResult] = await Promise.allSettled([
+                    testSystemAsync('http://localhost:8001/chat', sessionId + '_multi'),
+                    testSystemAsync('http://localhost:8003/chat', sessionId + '_single')
+                ]);
+
+                if (multiResult.status === 'fulfilled') {
+                    testResults.multiAgent = multiResult.value;
+                    document.getElementById('multiAgentTime').textContent = `${multiResult.value.time.toFixed(1)}초`;
+                }
+
+                if (singleResult.status === 'fulfilled') {
+                    testResults.singleChain = singleResult.value;
+                    document.getElementById('singleChainTime').textContent = `${singleResult.value.time.toFixed(1)}초`;
+                }
+
+                displayResults();
+                displayComparison();
+
+            } catch (error) {
+                console.error('동시 테스트 오류:', error);
+                alert('테스트에 실패했습니다: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '⚡ 동시 비교 테스트';
+            }
+        }
+
+        async function testSystemAsync(url, sessionId) {
+            const message = document.getElementById('testMessage').value.trim();
+            const startTime = Date.now();
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: message,
+                    session_id: sessionId,
+                    conversation_history: [],
+                    user_profile: {},
+                    profile_completion: 0.0
+                })
+            });
+
+            const data = await response.json();
+            const endTime = Date.now();
+            const processingTime = (endTime - startTime) / 1000;
+
+            return {
+                response: data.response,
+                time: processingTime,
+                timestamp: new Date().toLocaleTimeString()
+            };
+        }
+
+        function displayResults() {
+            const resultsSection = document.getElementById('resultsSection');
+            resultsSection.style.display = 'block';
+            
+            let html = '';
+
+            if (testResults.multiAgent) {
+                html += `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <div class="result-title" style="color: #007AFF;">🤖 멀티에이전트 결과</div>
+                            <div class="result-time fast">${testResults.multiAgent.time.toFixed(1)}초</div>
+                        </div>
+                        <div class="result-content">${testResults.multiAgent.response}</div>
+                    </div>
+                `;
+            }
+
+            if (testResults.singleChain) {
+                html += `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <div class="result-title" style="color: #FF6B6B;">🔗 단일체인 결과</div>
+                            <div class="result-time slow">${testResults.singleChain.time.toFixed(1)}초</div>
+                        </div>
+                        <div class="result-content">${testResults.singleChain.response}</div>
+                    </div>
+                `;
+            }
+
+            resultsSection.innerHTML = html;
+        }
+
+        function displayComparison() {
+            if (!testResults.multiAgent || !testResults.singleChain) return;
+
+            const multiTime = testResults.multiAgent.time;
+            const singleTime = testResults.singleChain.time;
+            const speedup = ((singleTime - multiTime) / singleTime * 100).toFixed(1);
+            const timesDifference = (singleTime / multiTime).toFixed(1);
+
+            const summarySection = document.getElementById('comparisonSummary');
+            summarySection.style.display = 'block';
+            summarySection.innerHTML = `
+                <div class="winner">🏆 멀티에이전트가 ${speedup}% 더 빠릅니다!</div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">속도 차이</div>
+                        <div class="stat-value">${timesDifference}배</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">시간 단축</div>
+                        <div class="stat-value">${speedup}%</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">절약된 시간</div>
+                        <div class="stat-value">${(singleTime - multiTime).toFixed(1)}초</div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; text-align: center; color: #666;">
+                    📊 논문 결과: 멀티에이전트 병렬 처리가 전통적인 순차 처리보다 ${timesDifference}배 빠른 성능을 보였습니다.
+                </div>
+            `;
+        }
+
+        // 페이지 로드 시 입력창에 포커스
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('testMessage').focus();
+        });
+    </script>
+</body>
+</html>

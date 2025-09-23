@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌊 실시간 스트리밍 챗봇 테스트</title>
+    <style>
+        body {
+            font-family: 'Apple SD Gothic Neo', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .user-message {
+            background: #007AFF;
+            color: white;
+            margin-left: 20%;
+            text-align: right;
+        }
+        
+        .bot-message {
+            background: #f0f0f0;
+            color: #333;
+            margin-right: 20%;
+        }
+        
+        .agent-info {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .message-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        .send-button {
+            padding: 12px 20px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .send-button:hover {
+            background: #005BB5;
+        }
+        
+        .send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status.streaming {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .typing-indicator {
+            display: none;
+            font-style: italic;
+            color: #666;
+            padding: 10px;
+        }
+        
+        .streaming-text {
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <h1>🌴 제주도 여행 스트리밍 챗봇</h1>
+            <p>실시간 토큰 스트리밍으로 즉각적인 응답을 경험하세요!</p>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="chatMessages" class="chat-messages">
+            <div class="message bot-message">
+                <div>안녕하세요! 🌴 제주도 여행 계획을 도와드리겠습니다.</div>
+                <div>어떤 여행을 계획하고 계신가요?</div>
+                <div class="agent-info">💡 예: "가족 4명이 3박4일 제주도 여행을 계획 중입니다"</div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">
+            챗봇이 입력 중... ⌨️
+        </div>
+        
+        <div class="input-area">
+            <input 
+                type="text" 
+                id="messageInput" 
+                class="message-input" 
+                placeholder="메시지를 입력하세요..."
+                onkeypress="handleKeyPress(event)"
+            >
+            <button id="sendButton" class="send-button" onclick="sendMessage()">
+                전송
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let isStreaming = false;
+        let currentBotMessage = null;
+        let currentEventSource = null;
+        let sessionId = 'test-session-' + Date.now();
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            if (type === 'completed') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        function addUserMessage(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message user-message';
+            messageDiv.innerHTML = `<div>${message}</div>`;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function createBotMessage() {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot-message';
+            messageDiv.innerHTML = `
+                <div class="streaming-text"></div>
+                <div class="agent-info"></div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return messageDiv;
+        }
+
+        function updateBotMessage(content, agent, isComplete = false) {
+            if (!currentBotMessage) {
+                currentBotMessage = createBotMessage();
+            }
+            
+            const contentDiv = currentBotMessage.querySelector('.streaming-text');
+            const agentDiv = currentBotMessage.querySelector('.agent-info');
+            
+            if (content) {
+                contentDiv.innerHTML += content;
+            }
+            
+            if (agent && agent !== 'heartbeat') {
+                agentDiv.textContent = `🤖 ${agent}`;
+            }
+            
+            if (isComplete) {
+                currentBotMessage = null;
+            }
+            
+            // 자동 스크롤
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !isStreaming) {
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const message = input.value.trim();
+
+            if (!message || isStreaming) return;
+
+            // UI 업데이트
+            addUserMessage(message);
+            input.value = '';
+            sendButton.disabled = true;
+            isStreaming = true;
+            
+            showStatus('메시지 전송 중...', 'connecting');
+
+            try {
+                // POST 요청으로 스트리밍 시작
+                const response = await fetch('http://localhost:8001/chat/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: message,
+                        session_id: sessionId,
+                        conversation_history: [],
+                        user_profile: {},
+                        profile_completion: 0.0
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                showStatus('실시간 응답 수신 중...', 'streaming');
+
+                // 스트림 읽기
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                switch (data.type) {
+                                    case 'start':
+                                        console.log('🌊 스트리밍 시작');
+                                        break;
+                                        
+                                    case 'token':
+                                        updateBotMessage(data.content, data.agent);
+                                        break;
+                                        
+                                    case 'complete':
+                                        console.log('✅ 스트리밍 완료');
+                                        updateBotMessage('', '', true);
+                                        showStatus('응답 완료!', 'completed');
+                                        break;
+                                        
+                                    case 'error':
+                                        updateBotMessage(data.content, 'error', true);
+                                        showStatus('오류 발생', 'error');
+                                        break;
+                                }
+                            } catch (e) {
+                                console.warn('JSON 파싱 오류:', e, line);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('스트리밍 오류:', error);
+                updateBotMessage(`죄송합니다. 연결 오류가 발생했습니다: ${error.message}`, 'error', true);
+                showStatus('연결 오류', 'error');
+            } finally {
+                isStreaming = false;
+                sendButton.disabled = false;
+                input.focus();
+            }
+        }
+
+        // 페이지 로드 시 입력창에 포커스
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('messageInput').focus();
+        });
+    </script>
+</body>
+</html>

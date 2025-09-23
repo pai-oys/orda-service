@@ -1,0 +1,22 @@
+[project]
+name = "simple-jeju-chatbot"
+version = "0.1.0"
+description = "🌴 LangGraph 기반 제주도 여행 멀티 에이전트 시스템"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "httpx>=0.25.2",
+    "h2>=4.0.0",
+    "langchain-openai>=0.3.27",
+    "langchain>=0.1.0",
+    "pydantic>=2.7.4",
+    "python-multipart>=0.0.6",
+    "python-dotenv>=1.0.0",
+    "tiktoken>=0.9.0",
+    "langgraph>=0.0.40",
+    "streamlit>=1.28.0",
+    "plotly>=5.17.0",
+    "pandas>=2.0.0",
+    "requests>=2.28.0",
+]

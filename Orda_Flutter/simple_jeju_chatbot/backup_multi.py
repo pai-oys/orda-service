@@ -27,31 +27,6 @@ load_dotenv()
 # 환경변수에서 API 키 가져오기
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# 글로벌 로그 수집기
-execution_logs = []
-
-def add_log(message: str, log_type: str = "info"):
-    """실행 로그 추가"""
-    global execution_logs
-    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    log_entry = {
-        "timestamp": timestamp,
-        "type": log_type,
-        "message": message
-    }
-    execution_logs.append(log_entry)
-    print(message)  # 기존 콘솔 출력 유지
-
-def clear_logs():
-    """로그 초기화"""
-    global execution_logs
-    execution_logs = []
-
-def get_logs():
-    """현재 로그 반환"""
-    global execution_logs
-    return execution_logs.copy()
-
 @dataclass
 class UserProfile:
     """사용자 프로필 정보"""
@@ -99,11 +74,6 @@ class GraphState(TypedDict):
     event_results: List[Dict]
     final_response: str
     profile_ready: bool
-    search_duration: float  # 순수 검색 시간 추가
-    search_queries: Dict  # 사용된 검색 쿼리들
-    timing_details: Dict  # 상세 시간 분석
-    execution_logs: List[Dict]  # 실행 로그
-    llm_calls_count: int  # LLM 호출 횟수
 
 # 공용 LLM 인스턴스들 (각 에이전트별 독립 LLM)
 profile_llm = ChatOpenAI(api_key=OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.7)
@@ -115,24 +85,6 @@ response_llm = ChatOpenAI(api_key=OPENAI_API_KEY, model="gpt-4-turbo", temperatu
 
 # 벡터 DB 접근 URL (advanced_jeju_chatbot RAG 서비스)
 RAG_URL = "http://localhost:8002/chat"
-RAG_SEARCH_URL = "http://localhost:8002/search"  # 비동기 검색 전용 엔드포인트
-RAG_BATCH_URL = "http://localhost:8002/search/batch"  # 배치 검색 엔드포인트 (최고 성능)
-
-# 전역 HTTP 클라이언트 (연결 재사용으로 네트워크 오버헤드 최소화)
-global_http_client = None
-
-async def get_global_client():
-    """전역 HTTP 클라이언트 가져오기 (연결 풀 재사용)"""
-    global global_http_client
-    if global_http_client is None:
-        limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
-        timeout_config = httpx.Timeout(connect=2.0, read=30.0, write=5.0, pool=2.0)
-        global_http_client = httpx.AsyncClient(
-            timeout=timeout_config, 
-            limits=limits,
-            http2=True  # HTTP/2 활성화 (h2 패키지 설치 완료)
-        )
-    return global_http_client
 
 # 프로필 수집 노드
 async def profile_collector_node(state: GraphState) -> GraphState:
@@ -141,9 +93,6 @@ async def profile_collector_node(state: GraphState) -> GraphState:
     conversation_history = state.get("conversation_history", [])
     current_profile = state.get("user_profile", UserProfile())
     
-    # LLM 호출 횟수 초기화
-    llm_calls_count = 0
-    
     # 대화 기록에 사용자 메시지 추가
     conversation_history.append({
             "role": "user", 
@@ -151,11 +100,9 @@ async def profile_collector_node(state: GraphState) -> GraphState:
             "timestamp": datetime.now().isoformat()
         })
         
-    # 프로필 정보 추출 (LLM 호출 +1)
+    # 프로필 정보 추출
     profile_info = await extract_profile_info_original(user_message, current_profile)
-    llm_calls_count += 1
     print(f"🔍 추출된 프로필 정보: {profile_info}")
-    print(f"📊 LLM 호출 횟수: {llm_calls_count} (프로필 추출)")
     
     # 프로필 업데이트
     updated_profile = update_profile(current_profile, profile_info)
@@ -165,10 +112,8 @@ async def profile_collector_node(state: GraphState) -> GraphState:
     profile_ready = is_profile_sufficient(updated_profile)
     
     if not profile_ready:
-        # 추가 정보 수집 응답 생성 (LLM 호출 +1)
+        # 추가 정보 수집 응답 생성
         response = await generate_info_collection_response(updated_profile, user_message, conversation_history)
-        llm_calls_count += 1
-        print(f"📊 LLM 호출 횟수: {llm_calls_count} (정보 수집 응답)")
         conversation_history.append({
             "role": "assistant",
             "message": response,
@@ -180,16 +125,14 @@ async def profile_collector_node(state: GraphState) -> GraphState:
             "conversation_history": conversation_history,
             "user_profile": updated_profile,
             "final_response": response,
-            "profile_ready": False,
-            "llm_calls_count": llm_calls_count
+            "profile_ready": False
         }
     
     return {
         **state,
         "conversation_history": conversation_history,
         "user_profile": updated_profile,
-        "profile_ready": True,
-        "llm_calls_count": llm_calls_count
+        "profile_ready": True
     }
 
 # 숙박 에이전트 노드
@@ -439,13 +382,6 @@ async def response_generator_node(state: GraphState) -> GraphState:
     food_results = state.get("food_results", [])
     event_results = state.get("event_results", [])
     conversation_history = state.get("conversation_history", [])
-    search_duration = state.get("search_duration", 0.0)  # 검색 시간 가져오기
-    search_queries = state.get("search_queries", {})  # 사용된 쿼리들
-    timing_details = state.get("timing_details", {})  # 상세 시간 분석
-    current_llm_calls = state.get("llm_calls_count", 0)  # 현재 LLM 호출 횟수
-    
-    # 🔍 검색 시간 디버깅
-    print(f"🕐 응답 생성 노드에서 받은 search_duration: {search_duration}초")
     
     # 응답 생성 단계 디버깅
     print(f"📋 최종 응답 생성 - 수집된 정보:")
@@ -541,11 +477,6 @@ async def response_generator_node(state: GraphState) -> GraphState:
         )
         final_response = response.content.strip()
         
-        # 응답 생성 LLM 호출 +1
-        final_llm_calls = current_llm_calls + 1
-        print(f"📊 최종 응답 생성 LLM 호출: +1회")
-        print(f"📊 전체 LLM 호출 횟수: {final_llm_calls}회")
-        
         # 대화 기록에 응답 추가
         conversation_history.append({
             "role": "assistant",
@@ -556,25 +487,15 @@ async def response_generator_node(state: GraphState) -> GraphState:
         return {
             **state,
             "final_response": final_response,
-            "conversation_history": conversation_history,
-            "search_duration": search_duration,  # 검색 시간 전달
-            "search_queries": search_queries,  # 사용된 쿼리들 전달
-            "timing_details": timing_details,  # 상세 시간 분석 전달
-            "llm_calls_count": final_llm_calls  # 최종 LLM 호출 횟수
+            "conversation_history": conversation_history
         }
         
     except Exception as e:
         print(f"❌ 응답 생성 오류: {e}")
-        # 오류 시에도 LLM 호출은 시도했으므로 +1
-        final_llm_calls = current_llm_calls + 1
         return {
             **state,
             "final_response": "죄송합니다. 일정 생성 중 오류가 발생했습니다.",
-            "conversation_history": conversation_history,
-            "search_duration": search_duration,  # 검색 시간 전달 (오류 시에도)
-            "search_queries": search_queries,  # 사용된 쿼리들 전달
-            "timing_details": timing_details,  # 상세 시간 분석 전달
-            "llm_calls_count": final_llm_calls  # 최종 LLM 호출 횟수
+            "conversation_history": conversation_history
         }
 
 # 유틸리티 함수들
@@ -735,143 +656,6 @@ async def generate_info_collection_response(profile: UserProfile, user_message: 
     except Exception as e:
         print(f"❌ 정보 수집 응답 생성 오류: {e}")
         return "제주도 여행에 대해 더 자세히 알려주시면 더 좋은 추천을 드릴 수 있어요! 😊"
-
-async def search_vector_db_async(query: str, category: str = "", top_k: int = 5) -> List[Dict]:
-    """비동기 벡터 DB 검색 (전역 클라이언트 사용으로 최적화) - 상세 디버깅"""
-    total_start = asyncio.get_event_loop().time()
-    
-    try:
-        # 1. 전역 클라이언트 가져오기 (연결 재사용)
-        setup_start = asyncio.get_event_loop().time()
-        client = await get_global_client()
-        setup_time = asyncio.get_event_loop().time() - setup_start
-        
-        # 2. 페이로드 준비 시간
-        payload_start = asyncio.get_event_loop().time()
-        search_payload = {
-            "query": query,
-            "top_k": top_k,
-            "search_type": "similarity",
-            "filters": {}
-        }
-        payload_time = asyncio.get_event_loop().time() - payload_start
-        
-        # 3. HTTP 요청 시간 (연결 재사용으로 빨라짐)
-        request_start = asyncio.get_event_loop().time()
-        print(f"🔄 {category} 요청 시작: {query[:30]}...")
-        
-        response = await client.post(RAG_SEARCH_URL, json=search_payload)
-        
-        request_time = asyncio.get_event_loop().time() - request_start
-        
-        # 4. 응답 처리 시간
-        process_start = asyncio.get_event_loop().time()
-        
-        if response.status_code == 200:
-            result = response.json()
-            sources = result.get("results", [])
-            processing_time = result.get("processing_time", 0)
-            
-            process_time = asyncio.get_event_loop().time() - process_start
-            total_time = asyncio.get_event_loop().time() - total_start
-            
-            print(f"✅ {category} 완료 - {len(sources)}개 결과")
-            print(f"   📊 시간 분석: 클라이언트({setup_time*1000:.1f}ms) + 페이로드({payload_time*1000:.1f}ms) + 요청({request_time:.2f}s) + 처리({process_time*1000:.1f}ms) = 총({total_time:.2f}s)")
-            print(f"   🔍 RAG 서버 처리: {processing_time:.2f}초")
-            print(f"   🚀 네트워크 최적화: 연결 재사용")
-            
-            return sources[:top_k]
-        else:
-            total_time = asyncio.get_event_loop().time() - total_start
-            print(f"❌ {category} HTTP 오류 - 상태코드: {response.status_code}, 총 시간: {total_time:.2f}초")
-            return []
-                
-    except Exception as e:
-        total_time = asyncio.get_event_loop().time() - total_start
-        print(f"❌ {category} 검색 오류: {e}, 총 시간: {total_time:.2f}초")
-        return []
-
-async def batch_search_all_categories(queries: Dict[str, str], search_counts: Dict[str, int]) -> Dict[str, List[Dict]]:
-    """배치 검색으로 모든 카테고리 동시 처리 (최고 성능)"""
-    try:
-        client = await get_global_client()
-        
-        # 배치 요청 준비
-        batch_queries = []
-        query_mapping = {}  # 인덱스 → (카테고리, 개수) 매핑
-        
-        for category, query in queries.items():
-            count = search_counts.get(category, 5)
-            batch_queries.append(query)
-            query_mapping[len(batch_queries) - 1] = (category, count)
-        
-        print(f"🚀 배치 검색 시작: {len(batch_queries)}개 쿼리 한 번에 처리")
-        
-        # 배치 검색 실행
-        batch_start = asyncio.get_event_loop().time()
-        
-        response = await client.post(
-            RAG_BATCH_URL,
-            params={
-                "search_type": "similarity",
-                "top_k": max(search_counts.values())  # 최대 개수로 요청
-            },
-            json=batch_queries
-        )
-        
-        batch_time = asyncio.get_event_loop().time() - batch_start
-        
-        if response.status_code == 200:
-            batch_result = response.json()
-            results = {}
-            
-            # 결과 분배
-            for i, result_data in enumerate(batch_result["results"]):
-                category, count = query_mapping[i]
-                sources = result_data.get("sources", [])
-                results[category] = sources[:count]  # 필요한 개수만 자르기
-                
-                print(f"✅ {category} 배치 완료: {len(results[category])}개 결과")
-            
-            print(f"🎉 배치 검색 완료: {batch_time:.2f}초 (네트워크 오버헤드 최소화)")
-            return results
-            
-        else:
-            print(f"❌ 배치 검색 실패: HTTP {response.status_code}")
-            return {}
-            
-    except Exception as e:
-        print(f"❌ 배치 검색 오류: {e}")
-        return {}
-
-async def search_vector_db_simple(query: str, category: str = "", top_k: int = 5) -> List[Dict]:
-    """간단한 벡터 DB 검색 (병렬 처리용 - 재시도 없음)"""
-    try:
-        timeout_config = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
-        
-        async with httpx.AsyncClient(timeout=timeout_config) as client:
-            search_payload = {
-                "query": query,
-                "top_k": top_k,
-                "search_type": "similarity"  # 빠른 검색을 위해 similarity 사용
-            }
-            
-            response = await client.post(RAG_URL, json=search_payload)
-            
-            if response.status_code == 200:
-                result = response.json()
-                sources = result.get("sources", [])
-                processing_time = result.get("processing_time", 0)
-                
-                print(f"✅ {category} 검색 성공 - {len(sources)}개 결과, {processing_time:.2f}초 소요")
-                return sources[:top_k]
-            else:
-                print(f"❌ {category} HTTP 오류 - 상태코드: {response.status_code}")
-                return []
-                
-    except Exception as e:
-        print(f"❌ {category} 검색 오류: {e}")
-        return []
 
 async def search_vector_db(query: str, category: str = "", top_k: int = 5) -> List[Dict]:
     """벡터 DB 검색 (재시도 및 백오프 로직 포함)"""
@@ -1053,299 +837,122 @@ async def search_with_batching(query: str, category: str, total_count: int, batc
     print(f"🎯 {category} 최종 결과: {len(final_results)}개 (목표: {total_count}개)")
     return final_results
 
-# 진정한 멀티에이전트 병렬 검색 (각 에이전트 독립적 쿼리생성+검색)
+# 병렬 검색 기능 (여행 기간별 최적화)
 async def parallel_search_all(state: GraphState) -> GraphState:
-    """각 에이전트가 독립적으로 쿼리생성+검색을 병렬 수행"""
+    """모든 카테고리를 병렬로 검색 (여행 기간별 개수 최적화)"""
     user_profile = state["user_profile"]
     
-    # 기존 LLM 호출 횟수 가져오기
-    current_llm_calls = state.get("llm_calls_count", 0)
+    # 여행 기간에 따른 검색 개수 결정
+    search_counts = calculate_search_counts(user_profile.duration)
     
-    # 로그 초기화
-    clear_logs()
+    # 각 카테고리별 LLM 기반 맞춤형 쿼리 생성 (세밀한 프롬프트 반영)
+    print("🔍 각 카테고리별 맞춤형 쿼리 생성 중...")
     
-    add_log("🚀 진정한 멀티에이전트 병렬 처리 시작!", "multi_agent")
-    add_log("🎯 각 에이전트가 독립적으로 쿼리생성 + 검색 수행", "multi_agent")
-    add_log(f"📊 현재까지 LLM 호출: {current_llm_calls}회", "multi_agent")
+    async def generate_hotel_query(profile):
+        """숙박 검색 쿼리 생성 (개별 에이전트 프롬프트 사용)"""
+        prompt = f"""당신은 제주 여행자를 위한 **숙박 검색 쿼리 생성 전문가**입니다.
+
+사용자 프로필 정보를 참고해, 사용자의 관심사, 여행 지역, 여행 기간 정보를 바탕으로 **벡터 DB에서 숙박을 검색하기 위한 자연어 검색 쿼리 문장 한 줄**을 생성해주세요.
+
+사용자 프로필: {profile.get_summary()}
+
+쿼리에는 "제주도", "숙박", "호텔" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
+
+- 관심사가 있는 경우 그걸 자연스럽게 반영해. (예: 감성 숙소, 자연 속 힐링, 오션뷰 숙소, 독채 숙소, 프라이빗 풀빌라 등)
+- 관심사가 없는 경우 동행자 정보에 따라 장소의 분위기나 성격을 유추해서 적당한 표현을 넣어줘
+    - **연인**이면 로맨틱하고 감성적인 숙소나 오션뷰 호텔
+    - **가족**이면 아이 동반 가능한 가족형 리조트나 편의시설이 잘 갖춰진 곳
+    - **친구**면 여러 명이 함께 묵을 수 있는 트렌디한 숙소나 감성 숙소
+    - **혼자**면 조용하고 아늑한 1인 숙소나 자연과 가까운 힐링 공간
+
+검색 쿼리:"""
+        
+        response = await hotel_llm.ainvoke(prompt)
+        return response.content.strip()
     
-    # 전체 시간 측정 시작
-    total_start = asyncio.get_event_loop().time()
+    async def generate_event_query(profile):
+        """이벤트 검색 쿼리 생성 (개별 에이전트 프롬프트 사용)"""
+        prompt = f"""당신은 제주관광 전문 **자연어** **쿼리 생성 전문가**입니다.
+
+다음과 같은 사용자 프로필을 참고하여, 벡터 DB에서 행사나 축제 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
+
+사용자 프로필: {profile.get_summary()}
+
+쿼리는 "제주도", "행사", "이벤트" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
+
+- 관심사가 있는 경우 그걸 자연스럽게 반영해. (예: 로맨틱한 분위기, 트렌디한 분위기, 소규모 행사 등)
+- 관심사가 없는 경우 동행자 정보나 지역을 바탕으로 자연스럽게 적절한 분위기나 스타일을 유추해줘.
+    - **연인**이면 로맨틱하거나 분위기 좋은 곳
+    - **가족**이면 다양한 연령대가 함께 즐기기 좋은 곳 
+    - **친구**면 활기차고 활동적인 분위기의 축제나 트렌디한 행사
+    - **혼자**면 조용히 즐길 수 있는 문화행사나 혼행객에게 인기 있는 소규모 지역 축제
+
+자연어 검색 쿼리 한 문장으로 출력해주세요:"""
+        
+        response = await event_llm.ainvoke(prompt)
+        return response.content.strip()
     
-    # 4개 에이전트를 병렬로 실행 (각자 쿼리생성+검색)
-    agent_tasks = [
-        run_hotel_agent(user_profile),
-        run_travel_agent(user_profile), 
-        run_food_agent(user_profile),
-        run_event_agent(user_profile)
-    ]
+    async def generate_tour_query(profile):
+        """관광지 검색 쿼리 생성 (개별 에이전트 프롬프트 사용)"""
+        prompt = f"""당신은 제주관광 전문 **자연어** **쿼리 생성 전문가**입니다.
+
+다음과 같은 사용자 프로필에서 사용자가 입력한 관심사, 여행 지역, 동행자 정보를 참고해서 **벡터 DB에서 관광지 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄**을 만들어주세요.
+
+사용자 프로필: {profile.get_summary()}
+
+쿼리는 "제주도", "관광지" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
+
+- 관심사가 있는 경우 그걸 자연스럽게 반영해. (예: 자연 풍경, 감성적인 장소, 사진 찍기 좋은 곳, 활동적인 체험, 전시 공간 등)
+- 관심사가 없는 경우 동행자 정보에 따라 장소의 분위기나 성격을 유추해서 적당한 표현을 넣어줘
+    - **연인**이면 감성적이거나 뷰가 좋은 데이트 코스
+    - **가족**이면 아이와 함께 갈 수 있는 체험형 장소나 한적한 자연지
+    - **친구**면 트렌디하고 재밌는 핫플
+    - **혼자**면 조용히 걸을 수 있는 곳이나 분위기 있는 장소
+
+검색 쿼리:"""
+        
+        response = await travel_llm.ainvoke(prompt)
+        return response.content.strip()
     
-    add_log("⚡ 4개 에이전트 병렬 실행 시작...", "multi_agent")
-    results = await asyncio.gather(*agent_tasks)
+    async def generate_food_query(profile):
+        """음식점 검색 쿼리 생성 (개별 에이전트 프롬프트 사용)"""  
+        prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
+
+다음 사용자 프로필에서 사용자가 알려준 지역, 관심사, 그리고 동행자 정보를 참고해서 **벡터 DB에서 식당 또는 카페 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄**을 만들어주세요
+
+사용자 프로필: {profile.get_summary()}
+
+쿼리는 "제주도", "맛집" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
+
+- 관심사가 있는 경우 그걸 자연스럽게 반영합니다. (예: 감성적인 분위기, 현지인 맛집, 뷰 좋은 식당 등)
+- 관심사가 없는 경우 동행자 정보나 지역을 바탕으로 자연스럽게 적절한 분위기나 음식 스타일을 유추합니다.
+    - **연인**이면 로맨틱하거나 분위기 좋은 곳
+    - **가족**이면 편하게 식사할 수 있는 한식이나 넓은 공간
+    - **친구**면 캐주얼하거나 트렌디한 맛집
+    - **혼자**면 조용하고 혼밥하기 좋은 곳
+
+검색 쿼리:"""
+        
+        response = await food_llm.ainvoke(prompt)
+        return response.content.strip()
     
-    total_time = asyncio.get_event_loop().time() - total_start
-    add_log(f"🎉 모든 에이전트 완료! 총 시간: {total_time:.2f}초", "multi_agent")
+    # 쿼리 재생성 없이 바로 검색 (공정한 비교를 위해)
+    print("🔍 사전 정의된 쿼리로 바로 검색 시작...")
     
-    # 결과 통합 (쿼리 생성 시간과 검색 시간 분리)
-    hotel_results, hotel_query, hotel_query_time, hotel_search_time = results[0]
-    travel_results, travel_query, travel_query_time, travel_search_time = results[1]
-    food_results, food_query, food_query_time, food_search_time = results[2]
-    event_results, event_query, event_query_time, event_search_time = results[3]
+    # 프로필 기반 기본 쿼리 생성 (LLM 호출 없음)
+    profile_summary = user_profile.get_summary()
+    group_type = user_profile.group_type or "일반"
+    region = user_profile.travel_region or "제주도"
+    interests = " ".join(user_profile.interests) if user_profile.interests else "여행"
     
     queries = {
-        "hotel": hotel_query,
-        "tour": travel_query,
-        "food": food_query,
-        "event": event_query
+        "hotel": f"{region} {group_type} 여행 숙박 호텔 펜션 {interests}",
+        "tour": f"{region} {group_type} 관광지 명소 체험 {interests}",
+        "food": f"{region} {group_type} 맛집 식당 카페 {interests}",
+        "event": f"{region} {group_type} 행사 이벤트 축제 {interests}"
     }
     
-    total_results = len(hotel_results) + len(travel_results) + len(food_results) + len(event_results)
-    add_log(f"📊 최종 결과: 총 {total_results}개 수집", "multi_agent")
-    
-    # 각 에이전트가 쿼리를 생성했으므로 LLM 호출 4회 추가
-    parallel_llm_calls = 4  # 호텔, 관광, 음식, 이벤트 각각 1회씩
-    total_llm_calls = current_llm_calls + parallel_llm_calls
-    add_log(f"📊 병렬 쿼리 생성 LLM 호출: +{parallel_llm_calls}회", "multi_agent")
-    add_log(f"📊 총 LLM 호출 횟수: {total_llm_calls}회", "multi_agent")
-    
-    # 병렬 처리에서는 가장 오래 걸린 쿼리 생성 시간이 전체 쿼리 생성 시간
-    query_times = [hotel_query_time, travel_query_time, food_query_time, event_query_time]
-    max_query_time = max(query_times)
-    
-    add_log("📊 쿼리 생성 시간 분석:", "timing")
-    add_log(f"   🏨 호텔: {hotel_query_time:.2f}초", "timing")
-    add_log(f"   🎯 관광: {travel_query_time:.2f}초", "timing")
-    add_log(f"   🍽️ 음식: {food_query_time:.2f}초", "timing")
-    add_log(f"   🎉 이벤트: {event_query_time:.2f}초", "timing")
-    add_log(f"   ⚡ 병렬 최대: {max_query_time:.2f}초", "timing")
-    
-    # 카테고리별 상세 시간 구성
-    category_timings = {
-        "hotel": {
-            "query_generation_time": hotel_query_time,
-            "search_time": hotel_search_time,
-            "total_time": hotel_query_time + hotel_search_time
-        },
-        "tour": {
-            "query_generation_time": travel_query_time,
-            "search_time": travel_search_time,
-            "total_time": travel_query_time + travel_search_time
-        },
-        "food": {
-            "query_generation_time": food_query_time,
-            "search_time": food_search_time,
-            "total_time": food_query_time + food_search_time
-        },
-        "event": {
-            "query_generation_time": event_query_time,
-            "search_time": event_search_time,
-            "total_time": event_query_time + event_search_time
-        }
-    }
-    
-    add_log("📊 카테고리별 상세 시간 분석:", "timing")
-    for category, timing in category_timings.items():
-        add_log(f"   {category}: 쿼리생성({timing['query_generation_time']:.2f}초) + 검색({timing['search_time']:.2f}초) = 총({timing['total_time']:.2f}초)", "timing")
-    
-    return {
-        **state,
-        "hotel_results": hotel_results,
-        "travel_results": travel_results,
-        "food_results": food_results,
-        "event_results": event_results,
-        "search_duration": total_time,
-        "search_queries": queries,
-        "timing_details": {
-            "query_generation_time": max_query_time,  # 병렬 쿼리 생성 시간
-            "parallel_execution_time": total_time,    # 전체 병렬 실행 시간
-            "total_search_time": total_time,
-            "category_timings": category_timings  # 각 카테고리별 상세 시간
-        },
-        "execution_logs": get_logs(),  # 실행 로그 추가
-        "llm_calls_count": total_llm_calls  # 총 LLM 호출 횟수
-    }
-
-# 독립적 에이전트 실행 함수들
-async def run_hotel_agent(user_profile: UserProfile) -> tuple:
-    """호텔 에이전트 독립 실행"""
-    add_log("🏨 호텔 에이전트 시작", "agent")
-    
-    profile_summary = user_profile.get_summary()
-    
-    # 쿼리 생성
-    hotel_prompt = f"""당신은 제주 여행자를 위한 **숙박 검색 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 숙박을 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 생성해주세요.
-"제주도", "숙박", "호텔" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    hotel_response = await hotel_llm.ainvoke(hotel_prompt)
-    hotel_query = hotel_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    add_log(f"🏨 호텔 쿼리 생성 완료 ({query_time:.2f}초): '{hotel_query}'", "agent")
-    
-    # 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    hotel_count = search_counts.get("hotel", 4)
-    
-    search_start = asyncio.get_event_loop().time()
-    hotel_results = await search_vector_db_async(hotel_query, "hotel", hotel_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    add_log(f"🏨 호텔 검색 완료 ({search_time:.2f}초): {len(hotel_results)}개 결과", "agent")
-    
-    return hotel_results, hotel_query, query_time, search_time
-
-async def run_travel_agent(user_profile: UserProfile) -> tuple:
-    """관광 에이전트 독립 실행"""
-    add_log("🎯 관광 에이전트 시작", "agent")
-    
-    profile_summary = user_profile.get_summary()
-    
-    # 쿼리 생성
-    tour_prompt = f"""당신은 제주관광 전문 **자연어** **쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 관광지 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "관광지" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    travel_response = await travel_llm.ainvoke(tour_prompt)
-    travel_query = travel_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    add_log(f"🎯 관광 쿼리 생성 완료 ({query_time:.2f}초): '{travel_query}'", "agent")
-    
-    # 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    travel_count = search_counts.get("tour", 8)
-    
-    search_start = asyncio.get_event_loop().time()
-    travel_results = await search_vector_db_async(travel_query, "tour", travel_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    add_log(f"🎯 관광 검색 완료 ({search_time:.2f}초): {len(travel_results)}개 결과", "agent")
-    
-    return travel_results, travel_query, query_time, search_time
-
-async def run_food_agent(user_profile: UserProfile) -> tuple:
-    """음식 에이전트 독립 실행"""
-    add_log("🍽️ 음식 에이전트 시작", "agent")
-    
-    profile_summary = user_profile.get_summary()
-    
-    # 쿼리 생성
-    food_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 식당 또는 카페 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "맛집" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    food_response = await food_llm.ainvoke(food_prompt)
-    food_query = food_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    add_log(f"🍽️ 음식 쿼리 생성 완료 ({query_time:.2f}초): '{food_query}'", "agent")
-    
-    # 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    food_count = search_counts.get("food", 7)
-    
-    search_start = asyncio.get_event_loop().time()
-    food_results = await search_vector_db_async(food_query, "food", food_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    add_log(f"🍽️ 음식 검색 완료 ({search_time:.2f}초): {len(food_results)}개 결과", "agent")
-    
-    return food_results, food_query, query_time, search_time
-
-async def run_event_agent(user_profile: UserProfile) -> tuple:
-    """이벤트 에이전트 독립 실행"""
-    add_log("🎉 이벤트 에이전트 시작", "agent")
-    
-    profile_summary = user_profile.get_summary()
-    
-    # 쿼리 생성
-    event_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 이벤트나 축제 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "이벤트", "축제" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    event_response = await event_llm.ainvoke(event_prompt)
-    event_query = event_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    add_log(f"🎉 이벤트 쿼리 생성 완료 ({query_time:.2f}초): '{event_query}'", "agent")
-    
-    # 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    event_count = search_counts.get("event", 3)
-    
-    search_start = asyncio.get_event_loop().time()
-    event_results = await search_vector_db_async(event_query, "event", event_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    add_log(f"🎉 이벤트 검색 완료 ({search_time:.2f}초): {len(event_results)}개 결과", "agent")
-    
-    return event_results, event_query, query_time, search_time
-    
-    # 숙박 쿼리 생성 프롬프트
-    hotel_prompt = f"""당신은 제주 여행자를 위한 **숙박 검색 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 숙박을 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 생성해주세요.
-"제주도", "숙박", "호텔" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-
-    # 관광 쿼리 생성 프롬프트  
-    tour_prompt = f"""당신은 제주관광 전문 **자연어** **쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 관광지 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "관광지" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-
-    # 음식 쿼리 생성 프롬프트
-    food_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 식당 또는 카페 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "맛집" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-
-    # 이벤트 쿼리 생성 프롬프트
-    event_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 이벤트나 축제 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "이벤트", "축제" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-
-    # 🧠 LLM 기반 병렬 쿼리 생성 시작
-    query_generation_start = asyncio.get_event_loop().time()
-    print("🧠 4개 카테고리 LLM 쿼리 생성 병렬 시작...")
-    
-    # 4개 LLM 호출을 병렬로 실행
-    query_tasks = [
-        hotel_llm.ainvoke(hotel_prompt),
-        travel_llm.ainvoke(tour_prompt),
-        food_llm.ainvoke(food_prompt),
-        event_llm.ainvoke(event_prompt)
-    ]
-    
-    query_results = await asyncio.gather(*query_tasks)
-    query_generation_time = asyncio.get_event_loop().time() - query_generation_start
-    
-    # 생성된 쿼리 추출
-    queries = {
-        "hotel": query_results[0].content.strip(),
-        "tour": query_results[1].content.strip(),
-        "food": query_results[2].content.strip(),
-        "event": query_results[3].content.strip()
-    }
-    
-    print(f"🧠 LLM 쿼리 생성 완료: {query_generation_time:.2f}초")
-    print(f"🎯 LLM 생성 검색 쿼리들:")
+    print(f"🎯 사전 정의된 검색 쿼리들:")
     for category, query in queries.items():
         print(f"   {category}: '{query}'")
     
@@ -1356,32 +963,21 @@ async def run_event_agent(user_profile: UserProfile) -> tuple:
     # 모든 카테고리를 진짜 병렬로 처리
     categories = list(queries.items())
     
-    # 1. 태스크 생성 시간 측정 (나노초 정밀도)
-    import time
-    task_creation_start = time.perf_counter_ns()
+    # 병렬 태스크 생성
     tasks = {}
     for category, query in categories:
         count = search_counts.get(category, 5)
         print(f"📝 {category} 병렬 태스크 생성: '{query}' (검색 개수: {count}개)")
         tasks[category] = asyncio.create_task(
-            search_vector_db_async(query, category, count)
+            search_with_batching(query, category, count, batch_size=5)
         )
-    task_creation_time_ns = time.perf_counter_ns() - task_creation_start
-    task_creation_time = task_creation_time_ns / 1_000_000  # ms 변환
-    print(f"⚙️  태스크 생성 완료: {task_creation_time:.3f}ms ({task_creation_time_ns:,}ns)")
     
-    # 2. 병렬 실행 시간 측정
-    parallel_execution_start = asyncio.get_event_loop().time()
+    # 모든 태스크를 병렬로 실행
     print("⚡ 모든 카테고리 동시 검색 시작...")
     results = {}
     
     # 병렬 실행 및 결과 수집
     completed_tasks = await asyncio.gather(*tasks.values(), return_exceptions=True)
-    parallel_execution_time = asyncio.get_event_loop().time() - parallel_execution_start
-    print(f"⚡ 병렬 실행 완료: {parallel_execution_time:.2f}초")
-    
-    # 3. 결과 처리 시간 측정 (나노초 정밀도)
-    result_processing_start = time.perf_counter_ns()
     
     for i, (category, task) in enumerate(tasks.items()):
         result = completed_tasks[i]
@@ -1392,10 +988,6 @@ async def run_event_agent(user_profile: UserProfile) -> tuple:
             results[category] = result
             print(f"🎯 {category} 병렬 완료: {len(result)}개 결과")
     
-    result_processing_time_ns = time.perf_counter_ns() - result_processing_start
-    result_processing_time = result_processing_time_ns / 1_000_000  # ms 변환
-    print(f"📊 결과 처리 완료: {result_processing_time:.3f}ms ({result_processing_time_ns:,}ns)")
-    
     # 🕐 전체 검색 시간 측정 완료 (모든 검색 완료 후, 응답 생성 전)
     search_end_time = asyncio.get_event_loop().time()
     search_duration = search_end_time - search_start_time
@@ -1403,12 +995,7 @@ async def run_event_agent(user_profile: UserProfile) -> tuple:
     # 병렬 검색 완료 후 결과 요약
     total_results = sum(len(results.get(cat, [])) for cat in ["hotel", "tour", "food", "event"])
     print(f"🎉 모든 검색 완료! 총 {total_results}개 결과 수집")
-    
-    print(f"📈 시간 분석 요약:")
-    print(f"   ⚙️  태스크 생성: {task_creation_time:.3f}ms ({task_creation_time_ns:,}ns)")
-    print(f"   ⚡ 병렬 실행: {parallel_execution_time:.2f}초")
-    print(f"   📊 결과 처리: {result_processing_time:.3f}ms ({result_processing_time_ns:,}ns)")
-    print(f"   ⏱️  전체 시간: {search_duration:.2f}초 (멀티에이전트 병렬)")
+    print(f"⏱️  전체 검색 시간: {search_duration:.2f}초 (멀티에이전트 병렬)")
     
     return {
         **state,
@@ -1416,17 +1003,7 @@ async def run_event_agent(user_profile: UserProfile) -> tuple:
         "travel_results": results.get("tour", []),
         "food_results": results.get("food", []),
         "event_results": results.get("event", []),
-        "search_duration": search_duration,  # 순수 검색 시간 추가
-        "search_queries": queries,  # 사용된 쿼리들
-        "timing_details": {  # 상세 시간 분석
-            "query_generation_time": query_generation_time,
-            "task_creation_time": task_creation_time,
-            "task_creation_time_ns": task_creation_time_ns,
-            "parallel_execution_time": parallel_execution_time,
-            "result_processing_time": result_processing_time,
-            "result_processing_time_ns": result_processing_time_ns,
-            "total_search_time": search_duration
-        }
+        "search_duration": search_duration  # 순수 검색 시간 추가
     }
 
 # 조건부 라우팅 함수
@@ -1484,164 +1061,6 @@ async def diagnose_rag_server() -> Dict:
         print(f"❌ RAG 서버 진단 실패: {e}")
         return error_result
 
-# 조건부 라우팅 함수들
-def should_continue_to_agents(state: GraphState) -> str:
-    """프로필 수집 후 각 에이전트로 병렬 분산"""
-    if state.get("profile_ready", False):
-        # 모든 에이전트를 병렬로 시작
-        return "continue"  # 병렬 에이전트 실행
-    else:
-        return "end"
-
-def should_continue_to_response(state: GraphState) -> str:
-    """검색 완료 후 응답 생성으로 이동"""
-    return "response_generator"
-
-# 독립적 에이전트 노드들 (각자 쿼리생성 + 검색)
-async def hotel_agent_node(state: GraphState) -> GraphState:
-    """호텔 에이전트: 독립적 쿼리생성 + 검색"""
-    print("🏨 호텔 에이전트 시작 - 독립적 쿼리생성 + 검색")
-    
-    user_profile = state.get("user_profile", UserProfile())
-    profile_summary = user_profile.get_summary()
-    
-    # 호텔 전용 LLM 쿼리 생성
-    hotel_prompt = f"""당신은 제주 여행자를 위한 **숙박 검색 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 숙박을 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 생성해주세요.
-"제주도", "숙박", "호텔" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    hotel_response = await hotel_llm.ainvoke(hotel_prompt)
-    hotel_query = hotel_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    print(f"🏨 호텔 쿼리 생성 완료 ({query_time:.2f}초): '{hotel_query}'")
-    
-    # 호텔 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    hotel_count = search_counts.get("hotel", 4)
-    
-    search_start = asyncio.get_event_loop().time()
-    hotel_results = await search_vector_db_async(hotel_query, "hotel", hotel_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    print(f"🏨 호텔 검색 완료 ({search_time:.2f}초): {len(hotel_results)}개 결과")
-    
-    return {
-        **state,
-        "hotel_results": hotel_results
-    }
-
-async def travel_agent_node(state: GraphState) -> GraphState:
-    """관광 에이전트: 독립적 쿼리생성 + 검색"""
-    print("🎯 관광 에이전트 시작 - 독립적 쿼리생성 + 검색")
-    
-    user_profile = state.get("user_profile", UserProfile())
-    profile_summary = user_profile.get_summary()
-    
-    # 관광 전용 LLM 쿼리 생성
-    tour_prompt = f"""당신은 제주관광 전문 **자연어** **쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 관광지 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "관광지" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    travel_response = await travel_llm.ainvoke(tour_prompt)
-    travel_query = travel_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    print(f"🎯 관광 쿼리 생성 완료 ({query_time:.2f}초): '{travel_query}'")
-    
-    # 관광 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    travel_count = search_counts.get("tour", 8)
-    
-    search_start = asyncio.get_event_loop().time()
-    travel_results = await search_vector_db_async(travel_query, "tour", travel_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    print(f"🎯 관광 검색 완료 ({search_time:.2f}초): {len(travel_results)}개 결과")
-    
-    return {
-        **state,
-        "travel_results": travel_results
-    }
-
-async def food_agent_node(state: GraphState) -> GraphState:
-    """음식 에이전트: 독립적 쿼리생성 + 검색"""
-    print("🍽️ 음식 에이전트 시작 - 독립적 쿼리생성 + 검색")
-    
-    user_profile = state.get("user_profile", UserProfile())
-    profile_summary = user_profile.get_summary()
-    
-    # 음식 전용 LLM 쿼리 생성
-    food_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 식당 또는 카페 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "맛집" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    food_response = await food_llm.ainvoke(food_prompt)
-    food_query = food_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    print(f"🍽️ 음식 쿼리 생성 완료 ({query_time:.2f}초): '{food_query}'")
-    
-    # 음식 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    food_count = search_counts.get("food", 7)
-    
-    search_start = asyncio.get_event_loop().time()
-    food_results = await search_vector_db_async(food_query, "food", food_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    print(f"🍽️ 음식 검색 완료 ({search_time:.2f}초): {len(food_results)}개 결과")
-    
-    return {
-        **state,
-        "food_results": food_results
-    }
-
-async def event_agent_node(state: GraphState) -> GraphState:
-    """이벤트 에이전트: 독립적 쿼리생성 + 검색"""
-    print("🎉 이벤트 에이전트 시작 - 독립적 쿼리생성 + 검색")
-    
-    user_profile = state.get("user_profile", UserProfile())
-    profile_summary = user_profile.get_summary()
-    
-    # 이벤트 전용 LLM 쿼리 생성
-    event_prompt = f"""당신은 제주관광 전문 **자연어 쿼리 생성 전문가**입니다.
-사용자 프로필: {profile_summary}
-벡터 DB에서 이벤트나 축제 정보를 검색하기 위한 자연어 검색 쿼리 문장 한 줄을 만들어주세요.
-"제주도", "이벤트", "축제" 등 핵심 키워드를 포함하고 자연스럽고 간결해야 합니다.
-검색 쿼리:"""
-    
-    query_start = asyncio.get_event_loop().time()
-    event_response = await event_llm.ainvoke(event_prompt)
-    event_query = event_response.content.strip()
-    query_time = asyncio.get_event_loop().time() - query_start
-    
-    print(f"🎉 이벤트 쿼리 생성 완료 ({query_time:.2f}초): '{event_query}'")
-    
-    # 이벤트 검색 실행
-    search_counts = calculate_search_counts(user_profile.duration)
-    event_count = search_counts.get("event", 3)
-    
-    search_start = asyncio.get_event_loop().time()
-    event_results = await search_vector_db_async(event_query, "event", event_count)
-    search_time = asyncio.get_event_loop().time() - search_start
-    
-    print(f"🎉 이벤트 검색 완료 ({search_time:.2f}초): {len(event_results)}개 결과")
-    
-    return {
-        **state,
-        "event_results": event_results
-    }
-
 # LangGraph 설정
 workflow = StateGraph(GraphState)
 
@@ -1664,13 +1083,19 @@ workflow.add_conditional_edges(
     "profile_collector",
     should_continue_to_agents,
     {
-        "continue": "parallel_search",  # 병렬 검색 노드로 변경
+        "parallel_search": "parallel_search",  # 병렬 검색으로 변경
         "end": END
     }
 )
 
 # 병렬 검색 → 응답 생성
-workflow.add_edge("parallel_search", "response_generator")
+workflow.add_conditional_edges(
+    "parallel_search",
+    should_continue_to_response,
+    {
+        "response_generator": "response_generator"
+    }
+)
 
 # 응답 생성 후 종료
 workflow.add_edge("response_generator", END)
@@ -1711,8 +1136,7 @@ class SmartJejuChatbot:
                         "food_results": [],
                         "event_results": [],
                         "final_response": "",
-                        "profile_ready": False,
-                        "llm_calls_count": 0  # LLM 호출 횟수 초기화
+                        "profile_ready": False
                     }
                     print(f"🆕 새로운 상태 생성")
             except Exception as e:
@@ -1726,8 +1150,7 @@ class SmartJejuChatbot:
                     "food_results": [],
                     "event_results": [],
                     "final_response": "",
-                    "profile_ready": False,
-                    "llm_calls_count": 0  # LLM 호출 횟수 초기화
+                    "profile_ready": False
                 }
             
             # 그래프 실행
@@ -1740,11 +1163,7 @@ class SmartJejuChatbot:
             return {
                 "response": response_text,
                 "user_profile": user_profile,
-                "search_duration": result.get("search_duration", 0.0),  # 검색 시간 포함
-                "search_queries": result.get("search_queries", {}),  # 사용된 쿼리들
-                "timing_details": result.get("timing_details", {}),  # 상세 시간 분석
-                "execution_logs": result.get("execution_logs", []),  # 실행 로그
-                "llm_calls_count": result.get("llm_calls_count", 0)  # LLM 호출 횟수
+                "search_duration": result.get("search_duration", 0.0)  # 검색 시간 포함
             }
             
         except Exception as e:
@@ -1880,10 +1299,6 @@ class ChatResponse(BaseModel):
     analysis_confidence: float = 0.8
     timestamp: str
     search_duration: Optional[float] = None  # 순수 검색 시간 추가
-    search_queries: Optional[Dict] = None  # 사용된 검색 쿼리들
-    timing_details: Optional[Dict] = None  # 상세 시간 분석
-    execution_logs: Optional[List[Dict]] = None  # 실행 로그
-    llm_calls_count: Optional[int] = None  # LLM 호출 횟수
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
@@ -1915,15 +1330,7 @@ async def chat_endpoint(request: ChatRequest):
             profile_completion = completed_fields / len(profile_dict)
         
         # 더 많은 정보가 필요한지 판단
-        needs_more_info = False  # 네트워크 최적화 테스트를 위해 강제로 검색 실행
-        
-        # 🔍 LangGraph 결과 디버깅
-        search_duration = result.get("search_duration", 0.0)
-        search_queries = result.get("search_queries", {})
-        timing_details = result.get("timing_details", {})
-        print(f"🔍 LangGraph 결과에서 search_duration: {search_duration}")
-        print(f"🔍 LangGraph 결과 키들: {list(result.keys())}")
-        print(f"🕐 최종 API 응답에 포함될 search_duration: {search_duration}초")
+        needs_more_info = profile_completion < 0.8
         
         return ChatResponse(
             response=result["response"],
@@ -1934,11 +1341,7 @@ async def chat_endpoint(request: ChatRequest):
             user_profile=profile_dict,
             analysis_confidence=0.8,
             timestamp=datetime.now().isoformat(),
-            search_duration=search_duration,  # 검색 시간 추가
-            search_queries=search_queries,  # 사용된 쿼리들 추가
-            timing_details=timing_details,  # 상세 시간 분석 추가
-            execution_logs=result.get("execution_logs", []),  # 실행 로그 추가
-            llm_calls_count=result.get("llm_calls_count", 0)  # LLM 호출 횟수 추가
+            search_duration=result.get("search_duration", 0.0)  # 검색 시간 추가
         )
         
     except Exception as e:
@@ -2020,107 +1423,6 @@ async def health_check():
             "memory_support": True
         }
     }
-
-@app.get("/test/async")
-async def test_async_performance():
-    """비동기 처리 성능 테스트"""
-    try:
-        import time
-        
-        # RAG 서버의 비동기 테스트 호출
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post("http://localhost:8002/test/async")
-            
-            if response.status_code == 200:
-                rag_test_result = response.json()
-                
-                # 멀티에이전트 자체 테스트
-                test_queries = {
-                    "hotel": "제주도 호텔 추천",
-                    "tour": "제주도 관광지 추천", 
-                    "food": "제주도 맛집 추천",
-                    "event": "제주도 이벤트 추천"
-                }
-                
-                # 순차 처리 테스트
-                sequential_start = time.time()
-                sequential_results = {}
-                
-                for category, query in test_queries.items():
-                    start = time.time()
-                    result = await search_vector_db_async(query, category, 3)
-                    duration = time.time() - start
-                    sequential_results[category] = {
-                        "duration": duration,
-                        "results": len(result)
-                    }
-                
-                sequential_total = time.time() - sequential_start
-                
-                # 병렬 처리 테스트
-                parallel_start = time.time()
-                
-                tasks = {}
-                for category, query in test_queries.items():
-                    tasks[category] = asyncio.create_task(
-                        search_vector_db_async(query, category, 3)
-                    )
-                
-                parallel_sources = await asyncio.gather(*tasks.values(), return_exceptions=True)
-                parallel_total = time.time() - parallel_start
-                
-                # 병렬 결과 정리
-                parallel_results = {}
-                for i, (category, task) in enumerate(tasks.items()):
-                    result = parallel_sources[i]
-                    if isinstance(result, Exception):
-                        parallel_results[category] = {
-                            "results": 0,
-                            "error": str(result)
-                        }
-                    else:
-                        parallel_results[category] = {
-                            "results": len(result)
-                        }
-                
-                # 성능 향상 계산
-                speedup = ((sequential_total - parallel_total) / sequential_total * 100) if sequential_total > 0 else 0
-                
-                return {
-                    "multiagent_test": {
-                        "sequential": {
-                            "total_time": sequential_total,
-                            "results": sequential_results
-                        },
-                        "parallel": {
-                            "total_time": parallel_total,
-                            "results": parallel_results
-                        },
-                        "performance": {
-                            "speedup_percentage": speedup,
-                            "time_saved": sequential_total - parallel_total,
-                            "efficiency_ratio": sequential_total / parallel_total if parallel_total > 0 else 0
-                        }
-                    },
-                    "rag_server_test": rag_test_result,
-                    "comparison": {
-                        "multiagent_parallel_time": parallel_total,
-                        "rag_server_parallel_time": rag_test_result["parallel"]["total_time"],
-                        "overhead": parallel_total - rag_test_result["parallel"]["total_time"]
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                return {
-                    "error": f"RAG 서버 테스트 실패: {response.status_code}",
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-    except Exception as e:
-        return {
-            "error": f"비동기 테스트 실패: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }
 
 @app.get("/performance-tips")
 async def performance_tips():
